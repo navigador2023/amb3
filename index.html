@@ -193,6 +193,11 @@
             background: #4db6ac;
             color: #fff;
         }
+        .step.current {
+            background: #ffca28;
+            color: #000;
+            border-color: #ffca28;
+        }
         @media (max-width: 600px) {
             .container {
                 padding: 0.5rem;
@@ -349,9 +354,13 @@
             <div class="control">
                 <label for="arpeggiatorMode">Arpeggiator Mode</label>
                 <select id="arpeggiatorMode">
-                    <option value="random">Random</option>
                     <option value="up">Up</option>
                     <option value="down">Down</option>
+                    <option value="up-down">Up-Down</option>
+                    <option value="random">Random</option>
+                    <option value="as-played">As Played</option>
+                    <option value="chord">Chord</option>
+                    <option value="random-chord">Random Chord</option>
                 </select>
             </div>
             <div class="control">
@@ -479,7 +488,8 @@
             let merger = null;
             let noiseSource = null;
             let isPlaying = false;
-            let sequencerInterval = null;
+            let arpInterval = null;
+            let stepInterval = null;
             let mediaRecorder = null;
             let recordedChunks = [];
             let destinationNode = null;
@@ -487,6 +497,7 @@
             let sequence = Array(8).fill(true); // Default: all steps active
             let currentStep = 0;
             let currentArpIndex = 0;
+            let arpDirection = 1; // For up-down mode
 
             // C Minor Pentatonic scale (frequencies in Hz, based on C4)
             const pentatonicScale = [
@@ -574,45 +585,46 @@
                 filterFreq: { min: 100, max: 5000, target: (val) => filter.frequency.setTargetAtTime(val, ctx.currentTime, 0.05) },
                 filterQ: { min: 0.1, max: 10, target: (val) => filter.Q.setTargetAtTime(val, ctx.currentTime, 0.05) },
                 filterLfoDepth: { min: 0, max: 1000, target: (val) => filterLfoGain.gain.setTargetAtTime(val, ctx.currentTime, 0.05) },
-                lfoFreq: { min: 0.1, max: 10, target: (val) => {
+                lfoFreq: { min: 0.1, max: 2.5, target: (val) => {
                     lfo.frequency.setTargetAtTime(val * bpmScale, ctx.currentTime, 0.05);
                     filterLfo.frequency.setTargetAtTime(val * bpmScale, ctx.currentTime, 0.05);
                     noiseLfo.frequency.setTargetAtTime(val * bpmScale, ctx.currentTime, 0.05);
                 } },
                 arpeggiatorSpeed: { min: 0.1, max: 2, target: () => {
                     if (isPlaying && getElementValue('sequencerMode', 'arpeggiator') === 'arpeggiator') {
-                        clearInterval(sequencerInterval);
-                        startSequencer();
+                        clearInterval(arpInterval);
+                        startArpeggiator();
                     }
                 } },
                 arpeggiatorMode: { min: 0, max: 0, target: () => {
                     if (isPlaying && getElementValue('sequencerMode', 'arpeggiator') === 'arpeggiator') {
-                        clearInterval(sequencerInterval);
-                        startSequencer();
+                        clearInterval(arpInterval);
+                        startArpeggiator();
                     }
                 } },
                 progressionRandom: { min: 0, max: 100, target: () => {
                     if (isPlaying) {
-                        clearInterval(sequencerInterval);
-                        startSequencer();
+                        clearInterval(arpInterval);
+                        startArpeggiator();
                     }
                 } },
                 sequencerMode: { min: 0, max: 0, target: () => {
                     if (isPlaying) {
-                        clearInterval(sequencerInterval);
+                        clearInterval(arpInterval);
+                        clearInterval(stepInterval);
                         startSequencer();
                     }
                 } },
                 stepDuration: { min: 0, max: 4, target: () => {
                     if (isPlaying && getElementValue('sequencerMode', 'arpeggiator') === 'step') {
-                        clearInterval(sequencerInterval);
-                        startSequencer();
+                        clearInterval(stepInterval);
+                        startStepSequencer();
                     }
                 } },
                 sequenceLength: { min: 1, max: 8, target: () => {
                     if (isPlaying && getElementValue('sequencerMode', 'arpeggiator') === 'step') {
-                        clearInterval(sequencerInterval);
-                        startSequencer();
+                        clearInterval(stepInterval);
+                        startStepSequencer();
                     }
                 } },
                 reverbMix: { min: 0, max: 1, target: (val) => {
@@ -902,18 +914,19 @@
 
             // Step sequencer logic
             function startStepSequencer() {
-                const stepDuration = parseFloat(getElementValue('stepDuration', '0.25')) * 4; // Maintain previous slowdown
+                clearInterval(stepInterval);
+                const stepDuration = parseFloat(getElementValue('stepDuration', '0.25'));
                 const sequenceLength = parseInt(getElementValue('sequenceLength', '8'));
                 const progressionRandom = parseFloat(getElementValue('progressionRandom', '50')) / 100;
                 currentStep = 0;
 
                 if (stepDuration === 0) {
-                    clearInterval(sequencerInterval);
-                    sequencerInterval = null;
+                    stepInterval = null;
+                    updateStepSequencerUI();
                     return;
                 }
 
-                sequencerInterval = setInterval(() => {
+                stepInterval = setInterval(() => {
                     if (sequence[currentStep] && voices.length < 9) {
                         const chordIndices = Math.random() < progressionRandom
                             ? chords[Math.floor(Math.random() * chords.length)]
@@ -942,20 +955,21 @@
                         });
                     }
 
-                    // Update UI to highlight current step
                     updateStepSequencerUI();
-
                     currentStep = (currentStep + 1) % sequenceLength;
                 }, stepDuration * 1000);
             }
 
             // Arpeggiator logic
             function startArpeggiator() {
-                const arpSpeed = parseFloat(getElementValue('arpeggiatorSpeed', '0.25')) * 4; // Maintain previous slowdown
-                const arpMode = getElementValue('arpeggiatorMode', 'random');
+                clearInterval(arpInterval);
+                const arpSpeed = parseFloat(getElementValue('arpeggiatorSpeed', '0.25'));
+                const arpMode = getElementValue('arpeggiatorMode', 'up');
                 const progressionRandom = parseFloat(getElementValue('progressionRandom', '50')) / 100;
+                currentArpIndex = 0;
+                arpDirection = 1;
 
-                sequencerInterval = setInterval(() => {
+                arpInterval = setInterval(() => {
                     if (voices.length < 9) {
                         const chordIndices = Math.random() < progressionRandom
                             ? chords[Math.floor(Math.random() * chords.length)]
@@ -966,8 +980,67 @@
                             chord = chord.sort((a, b) => a - b);
                         } else if (arpMode === 'down') {
                             chord = chord.sort((a, b) => b - a);
-                        } else {
+                        } else if (arpMode === 'up-down') {
+                            chord = chord.sort((a, b) => a - b);
+                            if (currentArpIndex >= chord.length) {
+                                currentArpIndex = 2 * chord.length - 2 - currentArpIndex;
+                                arpDirection = -1;
+                            } else if (currentArpIndex < 0) {
+                                currentArpIndex = -currentArpIndex;
+                                arpDirection = 1;
+                            }
+                        } else if (arpMode === 'random') {
                             chord = chord.sort(() => Math.random() - 0.5);
+                        } else if (arpMode === 'as-played') {
+                            // Use chord as is
+                        } else if (arpMode === 'chord') {
+                            chord.forEach(freq => {
+                                if (voices.length < 9) {
+                                    const voice = createVoice(freq);
+                                    voice.oscillator.start();
+                                    voice.subOscillator.start();
+                                    voices.push(voice);
+
+                                    const holdTime = arpSpeed * 1000 * 0.8;
+                                    setTimeout(() => {
+                                        const release = parseFloat(getElementValue('release', '1')) / bpmScale;
+                                        releaseADSR(voice.gainNode, release);
+                                        releaseADSR(voice.subGainNode, release);
+                                        setTimeout(() => {
+                                            voice.oscillator.stop();
+                                            voice.subOscillator.stop();
+                                            voices = voices.filter(v => v !== voice);
+                                        }, release * 1000);
+                                    }, holdTime);
+                                }
+                            });
+                            currentArpIndex = 0;
+                            return;
+                        } else if (arpMode === 'random-chord') {
+                            const randomChord = chords[Math.floor(Math.random() * chords.length)];
+                            chord = buildChord(randomChord);
+                            chord.forEach(freq => {
+                                if (voices.length < 9) {
+                                    const voice = createVoice(freq);
+                                    voice.oscillator.start();
+                                    voice.subOscillator.start();
+                                    voices.push(voice);
+
+                                    const holdTime = arpSpeed * 1000 * 0.8;
+                                    setTimeout(() => {
+                                        const release = parseFloat(getElementValue('release', '1')) / bpmScale;
+                                        releaseADSR(voice.gainNode, release);
+                                        releaseADSR(voice.subGainNode, release);
+                                        setTimeout(() => {
+                                            voice.oscillator.stop();
+                                            voice.subOscillator.stop();
+                                            voices = voices.filter(v => v !== voice);
+                                        }, release * 1000);
+                                    }, holdTime);
+                                }
+                            });
+                            currentArpIndex = 0;
+                            return;
                         }
 
                         const freq = chord[currentArpIndex % chord.length];
@@ -976,7 +1049,7 @@
                         voice.subOscillator.start();
                         voices.push(voice);
 
-                        const holdTime = arpSpeed * 1000 * 0.8; // 80% of arp speed
+                        const holdTime = arpSpeed * 1000 * 0.8;
                         setTimeout(() => {
                             const release = parseFloat(getElementValue('release', '1')) / bpmScale;
                             releaseADSR(voice.gainNode, release);
@@ -988,13 +1061,18 @@
                             }, release * 1000);
                         }, holdTime);
 
-                        currentArpIndex++;
+                        currentArpIndex += arpDirection;
+                        if (arpMode !== 'up-down') {
+                            currentArpIndex = currentArpIndex % chord.length;
+                        }
                     }
                 }, arpSpeed * 1000);
             }
 
             // Start sequencer based on mode
             function startSequencer() {
+                clearInterval(arpInterval);
+                clearInterval(stepInterval);
                 const mode = getElementValue('sequencerMode', 'arpeggiator');
                 if (mode === 'step') {
                     startStepSequencer();
@@ -1007,17 +1085,14 @@
             function updateStepSequencerUI() {
                 const steps = document.querySelectorAll('.step');
                 steps.forEach((step, index) => {
-                    step.classList.toggle('active', sequence[index] && index === currentStep && getElementValue('sequencerMode', 'arpeggiator') === 'step');
-                    if (!sequence[index] && index === currentStep && getElementValue('sequencerMode', 'arpeggiator') === 'step') {
-                        step.classList.add('active'); // Highlight even if off for visibility
-                    }
+                    step.classList.toggle('active', sequence[index]);
+                    step.classList.toggle('current', index === currentStep && getElementValue('sequencerMode', 'arpeggiator') === 'step');
                 });
             }
 
             function toggleStep(index) {
                 sequence[index] = !sequence[index];
-                const step = document.querySelector(`.step[data-step="${index}"]`);
-                step.classList.toggle('active', sequence[index] && index === currentStep && getElementValue('sequencerMode', 'arpeggiator') === 'step');
+                updateStepSequencerUI();
             }
 
             // Helper function to safely get element value
@@ -1149,7 +1224,8 @@
                     document.getElementById('toggleSound').textContent = 'Stop Sound';
                     isPlaying = true;
                 } else {
-                    clearInterval(sequencerInterval);
+                    clearInterval(arpInterval);
+                    clearInterval(stepInterval);
                     voices.forEach(voice => {
                         const release = parseFloat(getElementValue('release', '1')) / bpmScale;
                         releaseADSR(voice.gainNode, release);
@@ -1170,6 +1246,7 @@
                     }
                     document.getElementById('toggleSound').textContent = 'Start Sound';
                     isPlaying = false;
+                    updateStepSequencerUI();
                 }
             });
 
@@ -1191,7 +1268,8 @@
             document.getElementById('bpm').addEventListener('input', (e) => {
                 bpmScale = parseFloat(e.target.value) / 60;
                 if (isPlaying) {
-                    clearInterval(sequencerInterval);
+                    clearInterval(arpInterval);
+                    clearInterval(stepInterval);
                     startSequencer();
                     parameterRanges['lfoFreq'].target(parseFloat(getElementValue('lfoFreq', '0.5')));
                     parameterRanges['lfoModRate'].target(parseFloat(getElementValue('lfoModRate', '0')));
@@ -1324,6 +1402,8 @@
 
             document.getElementById('arpeggiatorMode').addEventListener('change', (e) => {
                 parameterRanges['arpeggiatorMode'].target(e.target.value);
+                currentArpIndex = 0;
+                arpDirection = 1;
             });
 
             document.getElementById('progressionRandom').addEventListener('input', (e) => {
@@ -1335,6 +1415,7 @@
 
             document.getElementById('sequencerMode').addEventListener('change', (e) => {
                 parameterRanges['sequencerMode'].target(e.target.value);
+                updateStepSequencerUI();
             });
 
             document.getElementById('stepDuration').addEventListener('input', (e) => {
@@ -1346,6 +1427,7 @@
 
             document.getElementById('sequenceLength').addEventListener('input', (e) => {
                 parameterRanges['sequenceLength'].target(e.target.value);
+                updateStepSequencerUI();
             });
 
             document.getElementById('lfoModRate').addEventListener('input', (e) => {
@@ -1411,4 +1493,5 @@
 </p>
 </body>
 </html>
+
 
