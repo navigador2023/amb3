@@ -498,7 +498,7 @@
                     filterLfo.frequency.setTargetAtTime(val * bpmScale, ctx.currentTime, 0.05);
                     noiseLfo.frequency.setTargetAtTime(val * bpmScale, ctx.currentTime, 0.05);
                 } },
-                arpeggiatorSpeed: { min: 0, max: 10, target: () => {
+                arpeggiatorSpeed: { min: 0, max: 2.5, target: () => {
                     if (isPlaying) {
                         clearInterval(sequencerInterval);
                         startSequencer();
