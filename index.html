@@ -801,7 +801,7 @@
                 const arpeggiatorSpeed = parseFloat(getElementValue('arpeggiatorSpeed', '0')) * bpmScale;
                 const arpeggiatorMode = getElementValue('arpeggiatorMode', 'off');
                 const progressionRandom = parseFloat(getElementValue('progressionRandom', '50')) / 100;
-                const stepTime = 60 / bpm / 2; // Quarter note at 2 steps per beat
+                const stepTime = (60 / bpm / 2) * 4; // Quarter note at 2 steps per beat, slowed down by 4x
 
                 sequencerInterval = setInterval(() => {
                     if (Math.random() < noteDensity && voices.length < 9) {
@@ -819,7 +819,7 @@
                                     voice.subOscillator.start();
                                     voices.push(voice);
 
-                                    const holdTime = (Math.random() * 1 + 1) * 2000; // Random hold time 1-2s
+                                    const holdTime = (Math.random() * 1 + 1) * 2000 * 4; // Random hold time 1-2s, slowed down by 4x
                                     setTimeout(() => {
                                         const release = parseFloat(getElementValue('release', '1')) / bpmScale;
                                         releaseADSR(voice.gainNode, release);
@@ -832,9 +832,9 @@
                                     }, holdTime);
                                 }
                             });
-                            // Random pause for rhythmic variety
+                            // Random pause for rhythmic variety, slowed down by 4x
                             if (Math.random() < 0.2) {
-                                setTimeout(() => {}, stepTime * 1000 * 2);
+                                setTimeout(() => {}, stepTime * 1000 * 2 * 4);
                             }
                         } else {
                             let arpNotes = [...chord];
@@ -870,10 +870,10 @@
                             }
 
                             let arpStep = 0;
-                            const arpIntervalTime = arpeggiatorSpeed > 0 ? 1000 / (arpeggiatorSpeed * bpmScale) : 1000;
+                            const arpIntervalTime = arpeggiatorSpeed > 0 ? (1000 / (arpeggiatorSpeed * bpmScale)) * 4 : 1000 * 4; // Slowed down by 4x
                             const arpInterval = setInterval(() => {
                                 if (voices.length < 9 && arpStep < arpNotes.length) {
-                                    const delay = selectedPattern === 'staggered' ? arpStep * 0.05 : 0;
+                                    const delay = selectedPattern === 'staggered' ? arpStep * 0.05 * 4 : 0; // Slow stagger delay by 4x
                                     const noteDuration = arpIntervalTime * (0.8 + Math.random() * 0.4); // Random duration 80-120%
                                     setTimeout(() => {
                                         const voice = createVoice(arpNotes[arpStep]);
@@ -896,9 +896,9 @@
                                 arpStep++;
                                 if (arpStep >= arpNotes.length) {
                                     clearInterval(arpInterval);
-                                    // Random pause for rhythmic variety
+                                    // Random pause for rhythmic variety, slowed down by 4x
                                     if (Math.random() < 0.2) {
-                                        setTimeout(() => {}, arpIntervalTime * 2);
+                                        setTimeout(() => {}, arpIntervalTime * 2 * 4);
                                     }
                                 }
                             }, arpIntervalTime);
